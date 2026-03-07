@@ -20,7 +20,7 @@ from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 
 # Vehicle Manager to spawn Vehicles
 from pegasus.simulator.logic.backends import Backend, BackendConfig, PX4MavlinkBackend, PX4MavlinkBackendConfig, ArduPilotMavlinkBackend, ArduPilotMavlinkBackendConfig
-from pegasus.simulator.logic.vehicles.multirotor import Multirotor, MultirotorConfig
+from pegasus.simulator.logic.vehicles.LAV2 import LAV2, LAV2Config
 from pegasus.simulator.logic.vehicle_manager import VehicleManager
 from pegasus.simulator.logic.graphical_sensors.monocular_camera import MonocularCamera
 
@@ -285,13 +285,13 @@ class UIDelegate:
                     return
                    
                 # Create the multirotor configuration
-                config_multirotor = MultirotorConfig()
+                config_multirotor = LAV2Config()
                 config_multirotor.backends = [backend]
                 config_multirotor.graphical_sensors = [MonocularCamera("camera", config={"update_rate": 60.0})]
                 
                 # Try to spawn the selected robot in the world to the specified namespace
-                Multirotor(
-                    "/World/quadrotor",
+                LAV2(
+                    "/World/LAV2",
                     ROBOTS[selected_robot],
                     self._vehicle_id,
                     pos,
