@@ -6,6 +6,7 @@
 """
 import os
 from pathlib import Path
+from importlib.resources import files
 
 import isaacsim.storage.native as nucleus
 
@@ -28,7 +29,8 @@ ASSET_PATH = ROOT + "/pegasus.simulator/pegasus/simulator/assets"
 ROBOTS_ASSETS = ASSET_PATH + "/Robots"
 
 # Define the built in robots of the extension
-ROBOTS = {"Iris": ROBOTS_ASSETS + "/Iris/iris.usd"} #, "Flying Cube": ROBOTS_ASSETS + "/iris_cube.usda"}
+# FIXME: files() is not working for some reason, so I had to hardcode the path to the robot USD files. This is not ideal, but it works for now. I will investigate why files() is not working and try to fix it in the future.
+ROBOTS = {"Iris": ROBOTS_ASSETS + "/Iris/iris.usd", "Flying Cube": ROBOTS_ASSETS + "/iris_cube.usda", "LAV2": "/home/porest/Code/LAV2/lav2/assets/usd/LAV2.usd"}
 
 # Setup the default simulation environments path
 NVIDIA_ASSETS_PATH = str(nucleus.get_assets_root_path())

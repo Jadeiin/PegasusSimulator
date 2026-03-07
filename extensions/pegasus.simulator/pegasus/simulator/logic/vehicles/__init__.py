@@ -5,3 +5,4 @@
 
 from .vehicle import Vehicle
 from .multirotor import Multirotor, MultirotorConfig
+from .LAV2 import LAV2, LAV2Config
