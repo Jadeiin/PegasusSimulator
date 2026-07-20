@@ -189,7 +189,7 @@ class LAV2(Vehicle):
         for i in range(4):
             # Apply the force in Z on the rotor frame
             self.apply_force(
-                [0.0, 0.0, forces_z[i]], body_part="/LAV2/rotor" + str(i + 1)
+                [0.0, 0.0, forces_z[i]], body_part="/LAV2/rotor" + str(i)
             )
 
             # Generate the rotating propeller visual effect
@@ -245,7 +245,7 @@ class LAV2(Vehicle):
 
         # Rotate the joint to yield the visual of a rotor spinning (for animation purposes only)
         joint = self.get_dc_interface().find_articulation_dof(
-            articulation, "rotor" + str(rotor_number + 1) + "_joint"
+            articulation, "rotor" + str(rotor_number)
         )
 
         # Spinning when armed but not applying force
