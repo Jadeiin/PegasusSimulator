@@ -73,8 +73,14 @@ class PegasusApp:
             {
                 "vehicle_id": 0,
                 "px4_autolaunch": True,
-                "px4_dir": self.pg.px4_path,
-                "px4_vehicle_model": self.pg.px4_default_airframe,  # CHANGE this line to 'iris' if using PX4 version bellow v1.14
+                "px4_dir": os.path.expanduser("~/Code/AeroCar"),
+                "px4_vehicle_model": "gazebo-classic_aerocar_v2",
+                "num_rotors": 4,
+                "input_scaling": [900, 900, 900, 900],
+                "num_ground_drives": 2,
+                "ground_input_start_index": 4,
+                "ground_input_offset": [0.0, 0.0],
+                "ground_input_scaling": [1.0, 1.0],
             }
         )
         config_multirotor.backends = [

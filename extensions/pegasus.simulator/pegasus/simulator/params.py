@@ -34,7 +34,11 @@ ROBOTS = {
     "Iris": ROBOTS_ASSETS + "/Iris/iris.usd",
     "Pegasus": ROBOTS_ASSETS + "/Pegasus/pegasus.usd",
     "Flying Cube": ROBOTS_ASSETS + "/iris_cube.usda",
-    "LAV2": "/home/porest/Code/LAV2/lav2/assets/usd/LAV2.usd",
+    "LAV2": os.path.expanduser(
+        os.environ.get(
+            "LAV2_USD_PATH", "~/Code/LAV2/lav2/assets/LAV2/usd/LAV2.usd"
+        )
+    ),
 }
 
 # Setup the default simulation environments path

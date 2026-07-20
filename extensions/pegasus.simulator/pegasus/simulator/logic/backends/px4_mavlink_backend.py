@@ -145,39 +145,73 @@ class ThrusterControl:
 
     @property
     def input_reference(self):
-        """A list of floats with the angular velocities in rad/s
-
-        Returns:
-            list: A list of floats with the angular velocities to apply to each rotor, expressed in rad/s
-        """
+        """Rotor angular velocities in rad/s."""
         return self._input_reference
 
     def update_input_reference(self, controls):
-        """Takes a list with the thrust controls received via mavlink and scales them in order to generated
-        the equivalent angular velocities in rad/s
-
-        Args:
-            controls (list): A list of ints with thrust controls received via mavlink
-        """
-
-        # Check if the number of controls received is correct
+        """Scale normalized MAVLink controls into rotor angular velocities."""
         if len(controls) < self.num_rotors:
             carb.log_warn("Did not receive enough inputs for all the rotors")
             return
-        
 
-        # Update the desired reference for every rotor (and saturate according to the min and max values)
         for i in range(self.num_rotors):
-            
-            # Compute the actual velocity reference to apply to each rotor
-            self._input_reference[i] = (controls[i] + self.input_offset[i]) * self.input_scaling[i] + self.zero_position_armed[i]
-
+            self._input_reference[i] = (
+                (controls[i] + self.input_offset[i]) * self.input_scaling[i]
+                + self.zero_position_armed[i]
+            )
 
     def zero_input_reference(self):
-        """
-        When this method is called, the input_reference is updated such that every rotor is stopped
-        """
-        self._input_reference = [0.0 for i in range(self.num_rotors)]
+        """Stop every rotor."""
+        self._input_reference = [0.0 for _ in range(self.num_rotors)]
+
+
+class GroundDriveControl:
+    """Decode left/right output-shaft targets from extended HIL controls."""
+
+    def __init__(
+        self,
+        num_drives: int = 2,
+        start_index: int = 4,
+        input_offset=None,
+        input_scaling=None,
+    ):
+        self.num_drives = num_drives
+        self.start_index = start_index
+        self.input_offset = (
+            [0.0 for _ in range(num_drives)]
+            if input_offset is None
+            else input_offset
+        )
+        self.input_scaling = (
+            [1.0 for _ in range(num_drives)]
+            if input_scaling is None
+            else input_scaling
+        )
+        assert len(self.input_offset) == self.num_drives
+        assert len(self.input_scaling) == self.num_drives
+        self._input_reference = [0.0 for _ in range(self.num_drives)]
+
+    @property
+    def input_reference(self):
+        """Left/right drive-shaft angular-velocity targets in rad/s."""
+        return self._input_reference
+
+    def update_input_reference(self, controls):
+        """Read the configured drive channels from HIL_ACTUATOR_CONTROLS."""
+        required_inputs = self.start_index + self.num_drives
+        if len(controls) < required_inputs:
+            carb.log_warn("Did not receive enough inputs for the ground drive")
+            return
+
+        for index in range(self.num_drives):
+            control = controls[self.start_index + index]
+            self._input_reference[index] = (
+                control + self.input_offset[index]
+            ) * self.input_scaling[index]
+
+    def zero_input_reference(self):
+        """Stop both sides of the ground drive."""
+        self._input_reference = [0.0 for _ in range(self.num_drives)]
 
 
 class PX4MavlinkBackendConfig(BackendConfig):
@@ -207,6 +241,10 @@ class PX4MavlinkBackendConfig(BackendConfig):
             >>>  "input_offset": [0.0, 0.0, 0.0, 0.0],
             >>>  "input_scaling": [1000.0, 1000.0, 1000.0, 1000.0],
             >>>  "zero_position_armed": [100.0, 100.0, 100.0, 100.0],
+            >>>  "num_ground_drives": 0,
+            >>>  "ground_input_start_index": 4,
+            >>>  "ground_input_offset": [],
+            >>>  "ground_input_scaling": [],
             >>>  "update_rate": 250.0
             >>> }
         """
@@ -230,6 +268,20 @@ class PX4MavlinkBackendConfig(BackendConfig):
         self.input_offset = self.config.get("input_offset", [0.0, 0.0, 0.0, 0.0])
         self.input_scaling = self.config.get("input_scaling", [1000.0, 1000.0, 1000.0, 1000.0])
         self.zero_position_armed = self.config.get("zero_position_armed", [100.0, 100.0, 100.0, 100.0])
+
+        # AeroCar extends HIL_ACTUATOR_CONTROLS without a custom MAVLink
+        # dialect: rotor controls remain at 0..3 and left/right output-shaft
+        # angular velocities (rad/s) use channels 4 and 5.
+        self.num_ground_drives: int = self.config.get("num_ground_drives", 0)
+        self.ground_input_start_index: int = self.config.get(
+            "ground_input_start_index", self.num_rotors
+        )
+        self.ground_input_offset = self.config.get(
+            "ground_input_offset", [0.0] * self.num_ground_drives
+        )
+        self.ground_input_scaling = self.config.get(
+            "ground_input_scaling", [1.0] * self.num_ground_drives
+        )
 
         # The update rate at which we will be sending data to mavlink (TODO - remove this from here in the future
         # and infer directly from the function calls)
@@ -282,6 +334,12 @@ class PX4MavlinkBackend(Backend):
         # Vehicle Rotor data received from mavlink
         self._rotor_data: ThrusterControl = ThrusterControl(
             self.config.num_rotors, self.config.input_offset, self.config.input_scaling, self.config.zero_position_armed
+        )
+        self._ground_drive_data = GroundDriveControl(
+            self.config.num_ground_drives,
+            self.config.ground_input_start_index,
+            self.config.ground_input_offset,
+            self.config.ground_input_scaling,
         )
 
         # Vehicle actuator control data
@@ -477,6 +535,10 @@ class PX4MavlinkBackend(Backend):
         """Method that when implemented, should return a list of desired angular velocities to apply to the vehicle rotors
         """
         return self._rotor_data.input_reference
+
+    def ground_input_reference(self):
+        """Return left/right drive-shaft targets in rad/s."""
+        return self._ground_drive_data.input_reference
 
     def __del__(self):
         """Gets called when the PX4MavlinkBackend object gets destroyed. When this happens, we make sure
@@ -832,10 +894,12 @@ class PX4MavlinkBackend(Backend):
 
             # Set the rotor target speeds
             self._rotor_data.update_input_reference(controls)
+            self._ground_drive_data.update_input_reference(controls)
 
         # If the vehicle is not armed, do not rotate the propellers
         else:
             self._rotor_data.zero_input_reference()
+            self._ground_drive_data.zero_input_reference()
 
     def update_graphical_sensor(self, sensor_type: str, data):
         """Method that when implemented, should handle the receival of graphical sensor data

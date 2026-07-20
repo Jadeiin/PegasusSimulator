@@ -70,6 +70,12 @@ class LAV2Config:
         # The default graphical sensors for a quadrotor
         self.graphical_sensors = []
 
+        # Match the LAV2 training model's two speed-controlled output shafts.
+        # These are runtime drive properties; the USD topology stays unchanged.
+        self.ground_drive_damping = 6.17
+        self.ground_drive_effort_limit = 9.39
+        self.ground_drive_speed_limit = 40.0 * np.pi
+
         # The default omnigraphs for a quadrotor
         self.graphs = []
 
@@ -129,6 +135,14 @@ class LAV2(Vehicle):
         # 2. Setup the dynamics of the system - get the thrust curve of the vehicle from the configuration
         self._thrusters = config.thrust_curve
         self._drag = config.drag
+        self._ground_drive_joint_names = (
+            "wheel_l_drive_joint",
+            "wheel_r_drive_joint",
+        )
+        self._ground_drive_damping = config.ground_drive_damping
+        self._ground_drive_effort_limit = config.ground_drive_effort_limit
+        self._ground_drive_speed_limit = config.ground_drive_speed_limit
+        self._ground_drive_joints = None
 
     def start(self):
         """In this case we do not need to do anything extra when the simulation starts"""
@@ -158,8 +172,12 @@ class LAV2(Vehicle):
         # Get the desired angular velocities for each rotor from the first backend (can be mavlink or other) expressed in rad/s
         if len(self._backends) != 0:
             desired_rotor_velocities = self._backends[0].input_reference()
+            ground_input = getattr(
+                self._backends[0], "ground_input_reference", lambda: (0.0, 0.0)
+            )()
         else:
             desired_rotor_velocities = [0.0 for i in range(self._thrusters._num_rotors)]
+            ground_input = (0.0, 0.0)
 
         # Input the desired rotor velocities in the thruster model
         self._thrusters.set_input_reference(desired_rotor_velocities)
@@ -184,9 +202,33 @@ class LAV2(Vehicle):
         drag = self._drag.update(self._state, dt)
         self.apply_force(drag, body_part="/LAV2/LAV2")
 
+        # Command only the two physical drive shafts. The existing USD mimic
+        # joints synchronize all follower road wheels on each side.
+        self.handle_ground_drive(ground_input, articulation)
+
         # Call the update methods in all backends
         for backend in self._backends:
             backend.update(dt)
+
+    def handle_ground_drive(self, drive_velocities, articulation):
+        """Apply left/right output-shaft angular velocities in rad/s."""
+        if self._ground_drive_joints is None:
+            self._ground_drive_joints = tuple(
+                self.get_dc_interface().find_articulation_dof(articulation, name)
+                for name in self._ground_drive_joint_names
+            )
+            for joint in self._ground_drive_joints:
+                properties = self.get_dc_interface().get_dof_properties(joint)
+                properties.stiffness = 0.0
+                properties.damping = self._ground_drive_damping
+                properties.max_effort = self._ground_drive_effort_limit
+                properties.max_velocity = self._ground_drive_speed_limit
+                self.get_dc_interface().set_dof_properties(joint, properties)
+
+        for joint, velocity in zip(
+            self._ground_drive_joints, drive_velocities, strict=True
+        ):
+            self.get_dc_interface().set_dof_velocity_target(joint, float(velocity))
 
     def handle_propeller_visual(self, rotor_number, force: float, articulation):
         """
